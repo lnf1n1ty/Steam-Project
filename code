@@ -1,0 +1,617 @@
+import requests
+import random
+import webbrowser
+from playsound import playsound
+from datetime import timedelta
+import sys
+import psycopg2
+from io import BytesIO
+from configparser import ConfigParser
+from urllib.request import urlopen
+from PIL import ImageTk
+import subprocess
+import customtkinter
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg)
+import numpy as np
+from tkinter import *
+# ----------------------------------------------------------------------------------------------------------------------
+# font's en kleuren die we gebruiken voor de GUI
+LARGE_FONT = ("arial", 30)
+font = "arial"
+
+z = "#171a21"  # (heel donker blauw eigenlijk zwart)
+g = "#c7d5e0"  # (grijs)
+dg = "#2c3136"  # (donker grijs)
+lb = "#66c0f4"  # (licht blauw)
+b = "#1b2838"  # (blauw)
+db = "#2a475e"  # (donker blauw)
+idb = "#264054"  # (iets donkerder blauw)
+dg1 = "#212121" # (donker grijs) in loginscherm)
+gr = "#4b9529" # (groen)
+# ----------------------------------------------------------------------------------------------------------------------
+# URLS van de API's
+url_recent_games = 'http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={}&steamid={}&format=json'
+# url_afbeelding = 'http://media.steampowered.com/steamcommunity/public/images/apps/{}/{}.jpg'
+url_gebruikers_account = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'
+url_games_owned = 'https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={}&steamid={}&format=json&include_appinfo=1'
+url_friend_list = 'http://api.steampowered.com/ISteamUser/GetFriendList/v0001/?key={}&steamid={}&relationship=friend'
+# ----------------------------------------------------------------------------------------------------------------------
+# config.ini bestand
+config_file = 'config.ini'
+config = ConfigParser()
+config.read(config_file)
+api_key = config['api_key']['key']
+# ----------------------------------------------------------------------------------------------------------------------
+# Lijsten voor de info die wordt opgehaald.
+lst_recent_games = []
+lst_foto = []
+lst_appids = []
+lst_username = []
+lst_avatar = []
+lst_owned_games = []
+lst_appids_gb = []
+lst_vrienden_lijst = []
+lst_tijd = []
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+# ======================================== verbinding maken met de database ============================================
+# verbinding maken met de database:
+con = psycopg2.connect(
+    host="localhost",
+    database="Project-Steam",
+    user="postgres",
+    password="postgres", )
+
+cur = con.cursor()
+
+# ==================================================== INLOG PAGINA ====================================================
+# Test login:
+def login():
+    global steam_id
+    steam_id = id_var.get()
+    app.destroy()
+    return (steam_id)
+
+# Thema van de customtkinter GUI
+customtkinter.set_appearance_mode('dark')
+customtkinter.set_default_color_theme("dark-blue")
+customtkinter.deactivate_automatic_dpi_awareness()
+
+# login functie
+def button_callback():
+    return(login())
+
+# functie voor de knop op je aan te melden bij steam
+def url_signup():
+    webbrowser.open('https://store.steampowered.com/join/?&snr=1_60_4__62')
+
+# Maakt de tkinter GUI voor het inlogscherm
+app = customtkinter.CTk()
+app.title("Login") # geeft de naam 'Login' aan de GUI
+app.state("zoomed") # geeft het scherm in fullscreen weer
+app.config(background=z) # geeft de achtergrond kleur zwart
+
+# pakt de input van de gebruiker die in het tekst veld "entry" wordt geplaatst
+id_var = customtkinter.StringVar()
+
+frame_2 = customtkinter.CTkFrame(master=app, width=750, height=850, corner_radius=10)
+frame_2.grid(padx=10, pady=5)
+
+# maakt een invulveld aan
+entry = customtkinter.CTkEntry(master=app, font=(font, 20), placeholder_text="SteamID: ", textvariable=id_var)
+entry.place(x=200, y=350, width=350, height=50)
+
+# maakt een login knop
+button_1 = customtkinter.CTkButton(master=app, command=button_callback, font=(font, 20), text='Sign in')
+button_1.place(x=200, y=420, width=350, height=50)
+
+steam_foto = PhotoImage(file='logosteam_wit.png')
+logo_rechts = customtkinter.CTkLabel(app, image=steam_foto, text='', fg_color=dg1)
+logo_rechts.place(x=10, y=60, width=750, height=210)
+
+label_or = customtkinter.CTkLabel(app, font=(font, 20), text='_______________________ or _______________________', fg_color=dg1)
+label_or.place(x=200, y=480, width=350, height=50)
+
+# maakt een login knop
+button_2 = customtkinter.CTkButton(master=app, command=url_signup, font=(font, 20), text='Sign up', fg_color=gr)
+button_2.place(x=200, y=560, width=350, height=50)
+
+# Geeft een omschrijving van het project
+welcome = customtkinter.CTkLabel(app, font=(font, 14), fg_color=z, text="\nLOGIN\n\n\n"
+                                      "Hi everyone, we are NOTEPAD-A5, a group of employees of a consultancy company. \n\n"
+                                      "The consultancy company has been commissioned by Steam. \n"
+                                      "As many of you know, Steam is an online gaming platform where you can buy and play games. \n"
+                                      "There are more than 30,000 games available on this platform and about 100 million users. \n"
+                                      "With so many users, you can imagine how difficult it is for Steam to serve everyone better.\n\n "
+                                      "Steam has therefore started looking for consultancy companies and that is where we came into view. \n\n"
+                                      "Steam gave us the assignment that reads: \n"
+                                      "Create a graphical representation that provides insight into the gaming behavior of your friends on the Steam platform, \n"
+                                      "supported by one or more hardware components. \n"
+                                      "So Steam wants us to create a program where you can see when your friends are online, what games they play and how much time they spend on them. \n\n"
+                                      "We at NOTEPAD-A5 have decided to create a kind of step-by-step system so that new users, who are not yet familiar with Steam, \n"
+                                      "can easily get used to the program but still enjoy the features of Steam. With the necessary adjustments of course.\n\n\n"
+                                      "To get started fill in your steam key!\n")
+welcome.place(x=850, y=2, width=1000, height=500)
+
+app.mainloop()
+
+# ----------------------------------------------------------------------------------------------------------------------
+#===================================================== API OPMAAK ======================================================
+
+# URL requestpulls.
+result = requests.get(url_recent_games.format(api_key, steam_id))
+result2 = requests.get(url_gebruikers_account.format(api_key, steam_id))
+result3 = requests.get(url_games_owned.format(api_key, steam_id))
+result4 = requests.get(url_friend_list.format(api_key, steam_id))
+result5 = requests.get(url_recent_games.format(api_key, lst_vrienden_lijst))
+
+# ----------------------------------------------------------------------------------------------------------------------
+# DATA SETS:
+
+# Data vanuit de eerste url met info van meest recente games
+if result:
+    json = result.json()
+    info = json['response']
+    game = info['games']
+# Data vanuit de tweede url met info over het gebruikers account.
+if result2:
+    json2 = result2.json()
+    info2 = json2['response']
+    gebruiker = info2['players']
+# Data vanuit de derde url met info van de games die jij in bezit hebt.
+if result3:
+    json3 = result3.json()
+    info3 = json3['response']
+    game1 = info3['games']
+# Data vanuit de vierde url met info van jou vriendenlijst. (Dit zijn nog alleen steamids)
+if result4:
+    json4 = result4.json()
+    info4 = json4['friendslist']
+    vrienden = info4['friends']
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# FORLOOPS VOOR DE DATA STRUCTUUR IN DE LIJSTEN:
+
+# forloops voor het toevoegen van de appids en gamenamen in de lijsten:
+for appids in game:
+    lst_appids.append(appids['appid'])
+
+for game_namen in game:
+    lst_recent_games.append(game_namen['name'])
+
+for foto in game:
+    lst_foto.append(foto['img_icon_url'])
+
+# voor de gebruikers info
+for gebruiker_naam in gebruiker:
+    lst_username.append(gebruiker_naam['personaname'])
+# afbeelding van de gebruiker waar het steamid is opgegeven.
+for avatar_foto in gebruiker:
+    lst_avatar.append(avatar_foto['avatar'])
+
+# voor de gamesowned info:
+for spellen_inbezig in game1:
+    lst_owned_games.append(spellen_inbezig['name'])
+    lst_appids_gb.append(spellen_inbezig['appid'])
+
+    # Voeg de gespeelde tijd per game toe aan de list - lst_tijd:
+    lst_tijd.append(spellen_inbezig['playtime_forever'])
+# rekent de gespeelde tijd per game om van minuten naar uren:
+uren_lijst = [timedelta(minutes=minutes).seconds // 3600 for minutes in lst_tijd]
+
+# voor vrienden ids
+for vrienden_id in vrienden:
+    lst_vrienden_lijst.append(vrienden_id['steamid'])
+
+#=============================================== AANMAKEN VAN PAGINA'S =================================================
+self = customtkinter.CTk()
+self.state('zoomed')
+self.config(background=z)
+self.title('Steam - NotepadA5')
+pagina1 = customtkinter.CTkFrame(self)
+pagina2 = customtkinter.CTkFrame(self)
+pagina3 = customtkinter.CTkFrame(self)
+
+for frame in (pagina1, pagina2, pagina3):
+    frame.grid(row=0, column=0, sticky='nsew')
+
+def show_frame(frame):
+    frame.tkraise()
+
+show_frame(pagina1)
+
+#================================================= PAGINA 1(WELKOM) ====================================================
+
+def play():
+    playsound("startup.mp3")
+
+def func1():
+    show_frame(pagina2)
+    play()
+
+def func2():
+    show_frame(pagina3)
+    play()
+
+from PIL import Image
+# laat het welkoms bericht zien van de gebruiker die is ingelogd
+welcome = customtkinter.CTkLabel(pagina1, font=(font, 150), bg_color=z, fg_color=z, text="Welkom " + str(lst_username[0]) + "!")
+welcome.place(x=360, y=2, width=1200, height=150)
+
+# maakt een home knop aan
+my_image_home = customtkinter.CTkImage(dark_image=Image.open("home.png"),size=(40, 40))
+button_home = customtkinter.CTkButton(pagina1, text="Home", image=my_image_home, command=func1)
+button_home.place(x=550, y=300, width=250, height=50)
+
+# maakt een vrienden knop aan
+my_image_friends = customtkinter.CTkImage(dark_image=Image.open("friends.png"), size=(40, 40))
+button_vrienden = customtkinter.CTkButton(pagina1, text="Vrienden", image=my_image_friends, command=func2)
+button_vrienden.place(x=1050, y=300, width=250, height=50)
+
+# maakt een functie om de applicatie af te sluiten en opnieuw op te starten
+def sign_off():
+    subprocess.Popen(["python", "Steam-NotepadA5.py"], start_new_session=True)
+    sys.exit()
+
+my_image = customtkinter.CTkImage(dark_image=Image.open("Loggout.png"),size=(50, 50))
+sign_off_button = customtkinter.CTkButton(pagina1, text='', image=my_image, command=sign_off, fg_color=b, bg_color=b)
+sign_off_button.place(x=1800, y=10, width=75, height=75)
+
+pagina1.configure(fg_color=z)
+
+#================================================= PAGINA 2(HOME) ======================================================
+
+# maakt het menu aan de linker kant
+side_menu = customtkinter.CTkLabel(pagina2, bg_color=db, text='')
+side_menu.grid(ipadx=105, ipady=500, sticky=W, row=0, column=0, columnspan=100, rowspan=100)
+
+# maakt een lijn aan de bovenkant
+top = customtkinter.CTkLabel(pagina2,bg_color=b, text='Home', font=(font, 25))
+top.grid(ipadx=1010, ipady=20, sticky=N, row=0, column=0, columnspan=100, rowspan=100)
+
+# maakt een lijn aan de onderkant
+bottom = customtkinter.CTkLabel(pagina2, bg_color=b, text='')
+bottom.grid(ipadx=1000, ipady=20, sticky=SW, row=8, column=0, columnspan=100, rowspan=100)
+
+# maakt een tekst regel waar de gebruikers naam staat
+user = customtkinter.CTkLabel(pagina2, bg_color=lb, fg_color=z, text=lst_username[0], font=(font, 20))
+user.grid(ipadx=25, ipady=5, sticky=NW, row=2, column=1, columnspan=100, rowspan=100)
+
+# maakt blok aan waar de recente games in komen
+recent_games = customtkinter.CTkLabel(pagina2, text='', bg_color=dg, fg_color=dg)
+recent_games.grid(ipadx=705, ipady=230, sticky=NW, row=9, column=11, columnspan=100, rowspan=100)
+
+# maakt een tekstvak aan waar Recent games in staat
+recentgames = customtkinter.CTkLabel(pagina2, bg_color=dg, text="Recent games", font=(font, 18))
+recentgames.grid(ipadx=10, ipady=2, sticky=NW, row=11, column=42, columnspan=100, rowspan=100)
+
+# maakt een blok aan waar de game van de dag in komt
+game_of_day = customtkinter.CTkLabel(pagina2, bg_color=dg, text='')
+game_of_day.grid(ipadx=120, ipady=150, sticky=N, row=9, column=71, columnspan=100, rowspan=100)
+
+
+# maakt een blok voor de overige namen van de 5 recente spellen.
+game_of_day = customtkinter.CTkLabel(pagina2, bg_color=dg, text='')
+game_of_day.grid(ipadx=140, ipady=55, sticky=N, row=43, column=69, columnspan=100, rowspan=100)
+
+# maakt een tekstvak aan waar de game van de dag in staat
+pop_game_of_day = customtkinter.CTkLabel(master=pagina2, bg_color=dg, text="Game of the day", font=(font, 18))
+pop_game_of_day.grid(ipadx=10, ipady=2, sticky=N, row=10, column=71, columnspan=100, rowspan=100)
+
+# maakt knop waar er wordt doorverwezen naar het frame friends hier komt ook een grafiek in
+friends_online = customtkinter.CTkButton(master=pagina2, bg_color=dg, fg_color=dg, font=(font, 35), text='Vriendenlijst', command=lambda: show_frame(pagina3))
+friends_online.grid(ipadx=735, ipady=95, sticky=NW, row=65, column=11, columnspan=100, rowspan=100)
+
+# afbeeldingen
+# Game CSGO
+game_foto_CSGO = PhotoImage(file='csgo-gb.png')
+# GAME DOTA2
+game_foto_dota2 = PhotoImage(file='dota2.png')
+# GAME TEAM FORTRESS 2
+game_foto_tf2 = PhotoImage(file='tf2.png')
+# GAME PUBG
+game_foto_pubg = PhotoImage(file='pubg.png')
+#GAME GARRY's MOD
+game_foto_gm = PhotoImage(file='gm.png')
+# GAME GTA-V
+game_foto_gtav = PhotoImage(file='gtav.png')
+# GAME PAYDAY2
+game_foto_pd2 = PhotoImage(file='pd2.png')
+# GAME UNTURNED
+game_foto_UN = PhotoImage(file='unturned.png')
+# GAME TERRARIA
+game_foto_terr = PhotoImage(file='terraria.png')
+# GAME L4D2
+game_foto_ld2 = PhotoImage(file='l4d.png')
+
+cur.execute(f"SELECT naam FROM steam_apps ORDER BY positive_ratings DESC LIMIT 10;")
+spel_naam = cur.fetchall()
+
+# hier wordt een random spelnaam weergegeven uit de top20
+top10_spelnaam = random.choice(spel_naam)
+
+# forloop om de Accolades te verwijderen
+for i in top10_spelnaam:
+    top10 = i.strip("{}")
+
+# if statements voor het plaatsen van de afbeeldingen
+if top10_spelnaam == ("PLAYERUNKNOWN'S BATTLEGROUNDS",):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_pubg, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Counter-Strike: Global Offensive',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_CSGO, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Grand Theft Auto V',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_gtav, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Terraria',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_terr, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Left 4 Dead 2',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_ld2, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ("Garry's Mod",):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_gm, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Team Fortress 2',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_tf2, fg_color=z,text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Dota 2',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_dota2, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('Unturned',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_UN, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+if top10_spelnaam == ('PAYDAY 2',):
+    logo_gotd = customtkinter.CTkLabel(pagina2, image=game_foto_pd2, text='')
+    logo_gotd.place(x=1685, y=130, width=200, height=250)
+
+# maakt een blok aan waar de game naam in komt te staan
+game_of_day = customtkinter.CTkLabel(pagina2, text=top10, bg_color=dg, fg_color=dg, font=(font, 16))
+game_of_day.place(x=1685, y=380, width=200, height=35)
+
+if len(lst_appids) > 5:
+    max_len = 5
+else:
+    max_len = len(lst_appids)
+
+for i in range(max_len):
+    image_url = ('https://media.steampowered.com/steamcommunity/public/images/apps/' + str(lst_appids[i]) + '/' + str(
+        lst_foto[i]) + '.jpg')
+    u1 = urlopen(image_url)
+    raw_data1 = u1.read()
+    u1.close()
+    img = Image.open(BytesIO(raw_data1))
+
+    width, height = img.size
+    new_width = width * 6
+    new_height = height * 6
+    img = img.resize((new_width, new_height), Image.ANTIALIAS)
+
+    photo1 = ImageTk.PhotoImage(img)
+
+    image_game = customtkinter.CTkLabel(master=pagina2, text='', image=photo1)
+    image_game.grid(ipadx=0, ipady=0, sticky=NW, row=17, column=14 + 13 * i, columnspan=100, rowspan=100)
+
+
+# Dit is de code voor de 5 recent gespeelde spellen, het staat hier wegens een overlappende grid ergens in de GUI.
+for r, element in enumerate(lst_recent_games[0:5]):
+    rec_g = customtkinter.CTkLabel(pagina2, bg_color=dg, text=element)
+    rec_g.grid(ipadx=10, ipady=10, sticky=NW, row=50, column=14 + 13 * r, columnspan=15, rowspan=15)
+
+def launch_app():
+    # Start de eerste applicatie die in de lijst met recente games staat.
+    subprocess.run(["D:\\Steam\\steam.exe", "-applaunch", str(lst_appids[0])])
+
+# ============== dropdown menu ====================
+# hier komen de games te staan voor het drop down menu
+lst_owned_games.sort()
+
+drop = customtkinter.CTkComboBox(master=pagina2, values=lst_owned_games, fg_color=z, bg_color=z)
+drop.grid(ipadx=36, ipady=6, sticky=NW, row=7, column=0, columnspan=10, rowspan=10)
+drop.set('Game lijst')
+
+top = customtkinter.CTkButton(pagina2, bg_color=z, fg_color=z, text="Launch " + lst_recent_games[0], command=launch_app)
+top.grid(ipadx=13, ipady=10, sticky=NW, row=44, column=79, columnspan=100, rowspan=100)
+
+label = Label(pagina2, text=" ")
+label.grid()
+avatar_url = lst_avatar[0]
+
+# De koppeling van de avatar afbeelding
+avatar_1 = urlopen(avatar_url)
+raw_data_avatar = avatar_1.read()
+avatar_1.close()
+photo_avatar = ImageTk.PhotoImage(data=raw_data_avatar)
+
+# maakt een blok waar de gebruikers afbeelding in komt te staan
+image_game = customtkinter.CTkLabel(master=pagina2, fg_color=g, bg_color=dg, text='', image=photo_avatar)
+image_game.grid(ipadx=0, ipady=0, sticky=NW, row=2, column=7, columnspan=10, rowspan=10)
+
+# maakt een back to login knop
+top = customtkinter.CTkButton(master=pagina2, bg_color=z, fg_color=z, text="Back to Login", font=(font, 14),
+                              command=lambda: show_frame(pagina1))
+top.grid(ipadx=40, ipady=11, sticky=NW, row=1, column=80, columnspan=100, rowspan=100)
+
+# maakt een uitlog knop met afbeelding
+my_image = customtkinter.CTkImage(dark_image=Image.open("Loggout.png"), size=(40, 40))
+sign_off_button = customtkinter.CTkButton(pagina2, text='', image=my_image, command=sign_off, fg_color=b, bg_color=b)
+sign_off_button.place(x=10, y=960, width=60, height=60)
+
+#=============================================== PAGINA 3(VRIENDEN) ====================================================
+
+# lijsten met vrienden informatie vanuit de API
+lst_username_vrienden = []
+lst_rc_vrienden = []
+
+result_vn_ava = requests.get(url_gebruikers_account.format(api_key, lst_vrienden_lijst))
+
+steam_ids = lst_vrienden_lijst
+
+recent_games_url = "http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={}&steamid={}&format=json" # URL van de steamapi
+
+filtered_ids = [] # de lijst met de gefilterde steamids die een recente game bevatten
+
+for steam_id in steam_ids: # itereert door alle steamids en kijkt of deze een waarde groter dan 0 bevat.
+    result = requests.get(recent_games_url.format(api_key, steam_id))
+    if result.ok: # als het meer dan 0 bevat dan wordt de data opgeslagen in de filtered_ids lijst.
+        data = result.json()
+        if "games" in data["response"] and len(data["response"]["games"]) > 0:
+            filtered_ids.append(steam_id)
+
+
+url_recent_games = "http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={}&steamid={}&format=json"
+lst_rc_vrienden = []
+
+for steam_id in filtered_ids:
+    result_games_vrienden = requests.get(url_recent_games.format(api_key, steam_id))
+    if result_games_vrienden.ok:
+        try:
+            # verzamel informatie van de steamAPI(meest recente games van vrienden)
+            json_games_vrienden = result_games_vrienden.json()
+            games_info = json_games_vrienden['response']['games']
+
+            # itereer door de lijst en pak alle gametijd van de afgelopen 2 weken.
+            for rc_games_vrienden in games_info:
+                lst_rc_vrienden.append((rc_games_vrienden['playtime_2weeks']))
+            # als er geen recente games worden gevonden dan wordt onderstaande geprint.
+        except KeyError:
+            print("Geen recente games gevonden op dit steam profiel.")
+
+
+# rekent de gespeelde tijd per game om van minuten naar uren:
+uren_lijst_vrienden = [minutes // 60 for minutes in lst_rc_vrienden]
+
+# print(uren_lijst_vrienden)
+
+# voegt de steamid's die gefilterd zijn toe aan de bijbehorende uren gespeeld.
+result = []
+for i, steamid in enumerate(filtered_ids):
+    uren = uren_lijst_vrienden[i * 6:(i + 1) * 6]
+    result.append((uren))
+
+urentotaal = [sum(sublist) for sublist in result] # berekent het totaal per sublijst in de lijst uren_lijst_vrienden.
+
+
+if result_vn_ava:  # vn = Vrienden naam / ava = Avatar
+    json7 = result_vn_ava.json()
+    info7 = json7['response']
+    gebruiker2 = info7['players']
+
+# username van je vrienden uit de vriendenlijst
+for gebruiker_naam_vriend in gebruiker2:
+    lst_username_vrienden.append(gebruiker_naam_vriend['personastate'])
+    lst_username_vrienden.append(gebruiker_naam_vriend['personaname'])
+
+# maak een nieuwe lijst aan met de username en status van profiel van vrienden.
+lijst_opmaak = []
+for i in range(0, len(lst_username_vrienden), 2):  # pak uit de lijst elke keer de eerste 2 elementen
+    lijst_opmaak.append((lst_username_vrienden[i], lst_username_vrienden[i + 1]))  # voeg elke 2 elementen aan elkaar
+    lijst_opmaak.sort(reverse=True)
+    # new_list.sort(reverse = True)  # sorteer de lijst van vrienden status en vrienden username
+    # maakt een dict van alle statussen van een profiel in je vriendenlijst
+    status_dict = {
+        0: 'Offline',
+        1: 'Online',
+        2: 'Busy',
+        3: 'Afwezig',
+        4: 'Snooze',
+        5: 'Looking to trade',
+        6: 'Looking to play'
+    }
+    # maakt de layout van de vriendenlijst. in de linker {} komt de status van de vriend te staan. in de rechter {} komt de username van de vriend te staan.
+    lst_opmaak_1 = ["{}    |    {}".format(status_dict.get(status, 'Unknown'), username) for status, username in
+                lijst_opmaak if status in (0, 1)]
+
+lst_username_vrienden1 = []
+
+result12 = requests.get(url_gebruikers_account.format(api_key, filtered_ids))
+
+if result12:  # vn = Vrienden naam / ava = Avatar
+    json12 = result12.json()
+    info12 = json12['response']
+    gebruiker3 = info12['players']
+
+# username van je vrienden uit de vriendenlijst
+for gebruiker_naam_vriend in gebruiker3:
+    lst_username_vrienden1.append(gebruiker_naam_vriend['personaname'])
+
+# maakt het menu aan. aan de linker kant
+side_menu = customtkinter.CTkLabel(pagina3, bg_color=db, text='')
+side_menu.grid(ipadx=105, ipady=500, sticky=W, row=0, column=0, columnspan=100, rowspan=100)
+
+# maakt de dropdownmenu met de status van de vriend en gebruikersnaam
+drop = customtkinter.CTkComboBox(pagina3, values=lst_opmaak_1)
+drop.grid(ipadx=36, ipady=3, sticky=NW, row=7, column=0, columnspan=100, rowspan=100)
+drop.configure(bg_color=z, fg_color=z)
+drop.set('Vrienden lijst')
+
+# maakt een lijn aan de bovenkant met de titeltekst vriendenlijst.
+top = customtkinter.CTkLabel(pagina3, bg_color=b, font=(font, 20), text='Vriendenlijst')
+top.grid(ipadx=1000, ipady=20, sticky=N, row=0, column=0, columnspan=100, rowspan=100)
+
+# USER INFO:
+user = customtkinter.CTkLabel(pagina3, bg_color=lb, fg_color=z, text=lst_username[0], font=(font, 20))
+user.grid(ipadx=25, ipady=5, sticky=NW, row=2, column=1, columnspan=100, rowspan=100)
+
+
+# =============== code om de afbeelding url van de gebruiker op te halen =======================
+# URL van de avatar foto
+avatar_url = lst_avatar[0]
+
+# De koppeling van de avatar afbeelding
+avatar_1 = urlopen(avatar_url)
+raw_data_avatar = avatar_1.read()
+avatar_1.close()
+photo_avatar = ImageTk.PhotoImage(data=raw_data_avatar)
+
+# maakt een blok waar de gebruikers afbeelding in komt te staan
+image_game = customtkinter.CTkLabel(master=pagina3, fg_color=g, bg_color=dg, text='', image=photo_avatar)
+image_game.grid(ipadx=0, ipady=0, sticky=NW, row=2, column=7, columnspan=10, rowspan=10)
+
+# maakt een lijn aan de onderkant
+under = customtkinter.CTkLabel(pagina3, bg_color=b, text='')
+under.grid(ipadx=1000, ipady=20, sticky=SW, row=8, column=0, columnspan=100, rowspan=100)
+
+# maakt een back to loginbutton
+top = customtkinter.CTkButton(pagina3, bg_color=z, fg_color=z, text="Back to Login", font=(font, 14),
+                              command=lambda: show_frame(pagina1))
+top.grid(ipadx=40, ipady=11, sticky=NW, row=1, column=80, columnspan=100, rowspan=100)
+
+# maakt de x en y-as aan en geeft aan hoe de grafiek is
+fig, ax = plt.subplots()
+y_pos = np.arange(len(urentotaal)) # maakt de y-as aan met de waarde van de urentotaal
+ax.barh(y_pos, urentotaal, height=0.5, color=lb) # de opmaak voor de y-as
+ax.set_yticks(y_pos) # het plaatsen van de y-as
+ax.set_yticklabels(lst_username_vrienden1)
+ax.invert_yaxis()
+ax.set_xlabel('Tijd in uren') # onderkant van de grafiek waar wordt benoemd dat dit de uren per gebruiker zijn
+ax.set_title('Uren gespeeld van vrienden per 2 weken') # titel van de grafiek
+
+# hiermee zorgen we er voor dat de grafiek op de juiste plek komt te staan
+graph_placing = FigureCanvasTkAgg(fig, master=pagina3)
+graph_placing.get_tk_widget().grid(ipadx=500, ipady=150, sticky=NW, row=10, column=12, columnspan=100, rowspan=100)
+
+# maakt een uitlog knop met afbeelding
+my_image = customtkinter.CTkImage(dark_image=Image.open("Loggout.png"),size=(40, 40))
+sign_off_button = customtkinter.CTkButton(pagina3, text='', image=my_image, command=sign_off, fg_color=b, bg_color=b)
+sign_off_button.place(x=10, y=960, width=60, height=60)
+
+def on_closing():
+    self.quit()
+    subprocess.Popen("Steam-NotepadA5.py", shell=True)
+    sys.exit()
+
+self.mainloop()
